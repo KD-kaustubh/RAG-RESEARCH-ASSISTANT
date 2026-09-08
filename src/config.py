@@ -17,6 +17,9 @@ TOP_K = int(os.getenv("TOP_K", "3"))
 
 FAISS_INDEX_PATH = os.getenv("FAISS_INDEX_PATH", "faiss_index")
 
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+API_TIMEOUT = int(os.getenv("API_TIMEOUT", "60"))
+
 MAX_HISTORY_MESSAGES = int(os.getenv("MAX_HISTORY_MESSAGES", "10"))
 MAX_SESSIONS = int(os.getenv("MAX_SESSIONS", "100"))
 

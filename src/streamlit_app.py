@@ -1,175 +1,71 @@
-import hashlib
-import os
-import tempfile
-from pathlib import Path
+import uuid
 
 import streamlit as st
 
 try:
-    from .config import (
-        CHUNK_OVERLAP,
-        CHUNK_SIZE,
-        FAISS_INDEX_PATH,
-        GEMINI_CHAT_MODEL,
-        GEMINI_EMBED_MODEL,
-        PDF_PATH,
-        TOP_K,
-    )
-    from .llm import get_llm
-    from .rag_core import ask_question, format_history, sources_from_docs
-    from .vector_store import get_vectorstore
+    from .api_client import APIError, RagAPIClient
+    from .config import TOP_K
 except ImportError:
-    from config import (
-        CHUNK_OVERLAP,
-        CHUNK_SIZE,
-        FAISS_INDEX_PATH,
-        GEMINI_CHAT_MODEL,
-        GEMINI_EMBED_MODEL,
-        PDF_PATH,
-        TOP_K,
-    )
-    from llm import get_llm
-    from rag_core import ask_question, format_history, sources_from_docs
-    from vector_store import get_vectorstore
+    from api_client import APIError, RagAPIClient
+    from config import TOP_K
 
 
 st.set_page_config(page_title="RAG Research Assistant", page_icon=":page_facing_up:", layout="wide")
 
 
-def _file_hash(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()[:16]
+@st.cache_resource(show_spinner=False)
+def get_client() -> RagAPIClient:
+    return RagAPIClient()
 
 
-def _reset_chat() -> None:
+def _start_new_chat() -> None:
+    """Drop the UI history and the server side conversation with it."""
     st.session_state.messages = []
+    st.session_state.session_id = uuid.uuid4().hex
 
 
-@st.cache_resource(show_spinner=False)
-def load_default_vectorstore(pdf_path: str, index_path: str, chunk_size: int, chunk_overlap: int):
-    return get_vectorstore(
-        pdf_path=pdf_path,
-        index_path=index_path,
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-    )
-
-
-@st.cache_resource(show_spinner=False)
-def load_llm():
-    return get_llm()
-
-
-def load_uploaded_vectorstore(uploaded_file, chunk_size: int, chunk_overlap: int):
-    file_bytes = uploaded_file.getvalue()
-    upload_hash = _file_hash(file_bytes)
-    upload_signature = (upload_hash, chunk_size, chunk_overlap)
-
-    if (
-        st.session_state.get("upload_signature") == upload_signature
-        and "uploaded_vectorstore" in st.session_state
-    ):
-        return st.session_state.uploaded_vectorstore
-
-    temp_dir = tempfile.mkdtemp(prefix="rag_upload_")
-    safe_name = Path(uploaded_file.name).name
-    pdf_path = os.path.join(temp_dir, safe_name)
-    index_path = os.path.join(temp_dir, "faiss_index")
-
-    with open(pdf_path, "wb") as pdf_file:
-        pdf_file.write(file_bytes)
-
-    vectorstore = get_vectorstore(
-        pdf_path=pdf_path,
-        index_path=index_path,
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        rebuild=True,
-    )
-
-    st.session_state.upload_signature = upload_signature
-    st.session_state.uploaded_vectorstore = vectorstore
-    st.session_state.uploaded_pdf_name = safe_name
-    _reset_chat()
-    return vectorstore
-
-
-def render_sources(docs) -> None:
-    sources = sources_from_docs(docs)
+def render_sources(sources) -> None:
     if not sources:
         return
 
     with st.expander("Sources", expanded=True):
         for index, source in enumerate(sources, start=1):
-            page = f"page {source['page']}" if source["page"] else "page unknown"
-            st.markdown(f"**Source {index} - {page}**")
-            st.caption(source["excerpt"])
-
-
-def resolve_default_pdf() -> str:
-    configured_path = Path(PDF_PATH)
-    if configured_path.exists():
-        return str(configured_path)
-
-    fallback_path = Path("paper.pdf")
-    if fallback_path.exists():
-        return str(fallback_path)
-
-    return str(configured_path)
+            page = source.get("page")
+            page_label = f"page {page}" if page else "page unknown"
+            st.markdown(f"**Source {index} - {page_label}**")
+            st.caption(source.get("excerpt", ""))
 
 
 def main() -> None:
     if "messages" not in st.session_state:
         st.session_state.messages = []
+    if "session_id" not in st.session_state:
+        st.session_state.session_id = uuid.uuid4().hex
+
+    client = get_client()
 
     st.title("RAG Research Assistant")
 
     with st.sidebar:
-        st.header("Document")
-        uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
-
         st.header("Retrieval")
         top_k = st.slider("Sources", min_value=1, max_value=8, value=TOP_K)
-        chunk_size = st.number_input("Chunk size", min_value=200, max_value=2000, value=CHUNK_SIZE, step=100)
-        chunk_overlap = st.number_input(
-            "Chunk overlap",
-            min_value=0,
-            max_value=500,
-            value=CHUNK_OVERLAP,
-            step=25,
-        )
 
-        if st.button("Reset chat", use_container_width=True):
-            _reset_chat()
+        if st.button("New chat", use_container_width=True):
+            _start_new_chat()
+            st.rerun()
 
         st.divider()
-        st.caption(f"Chat model: {GEMINI_CHAT_MODEL}")
-        st.caption(f"Embedding model: {GEMINI_EMBED_MODEL}")
-
-    try:
-        with st.spinner("Preparing document index..."):
-            if uploaded_file:
-                vectorstore = load_uploaded_vectorstore(uploaded_file, chunk_size, chunk_overlap)
-                document_name = st.session_state.get("uploaded_pdf_name", uploaded_file.name)
-            else:
-                default_pdf = resolve_default_pdf()
-                if not Path(default_pdf).exists():
-                    st.error(f"Default PDF not found: {default_pdf}. Upload a PDF or set PDF_PATH.")
-                    return
-                vectorstore = load_default_vectorstore(default_pdf, FAISS_INDEX_PATH, chunk_size, chunk_overlap)
-                document_name = Path(default_pdf).name
-
-            llm = load_llm()
-    except Exception as exc:
-        st.error(f"Could not initialize the assistant: {exc}")
-        return
-
-    st.caption(f"Current document: {document_name}")
+        st.caption(f"API: {client.base_url}")
+        if client.health():
+            st.caption("Backend status: online")
+        else:
+            st.warning("Backend is not reachable. Start the API and reload this page.")
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-            if message["role"] == "assistant" and message.get("docs"):
-                render_sources(message["docs"])
+            if message["role"] == "assistant":
+                render_sources(message.get("sources"))
 
     query = st.chat_input("Ask a question about the document")
     if not query:
@@ -179,24 +75,26 @@ def main() -> None:
     with st.chat_message("user"):
         st.markdown(query)
 
-    history_text = format_history(st.session_state.messages[:-1], limit=10)
-
     with st.chat_message("assistant"):
         with st.spinner("Searching and generating answer..."):
             try:
-                answer, docs = ask_question(query, vectorstore, llm, k=top_k, history_text=history_text)
-            except Exception as exc:
-                st.error(f"Could not answer the question: {exc}")
+                result = client.ask(
+                    query,
+                    k=top_k,
+                    session_id=st.session_state.session_id,
+                )
+            except APIError as exc:
+                st.error(str(exc))
                 return
 
-        st.markdown(answer)
-        render_sources(docs)
+        st.markdown(result["answer"])
+        render_sources(result["sources"])
 
     st.session_state.messages.append(
         {
             "role": "assistant",
-            "content": answer,
-            "docs": docs,
+            "content": result["answer"],
+            "sources": result["sources"],
         }
     )
 

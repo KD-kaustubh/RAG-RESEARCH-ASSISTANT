@@ -2,10 +2,18 @@
 
 A Retrieval Augmented Generation assistant for asking questions about PDF research papers. It uses LangChain, FAISS, Google Gemini, Streamlit, FastAPI, and a CLI.
 
+## Architecture
+
+The Streamlit UI is a client of the API. It never runs retrieval or calls Gemini
+itself. The CLI still uses the RAG core directly.
+
+```text
+Streamlit UI --HTTP--> FastAPI --> RAG core --> FAISS / Gemini
+```
+
 ## Features
 
-- Streamlit chat UI for PDF question answering
-- Upload a PDF or use the configured default document
+- Streamlit chat UI that talks to the API over HTTP
 - Source excerpts with page numbers
 - CLI single-question mode
 - CLI interactive chat mode
@@ -18,14 +26,17 @@ A Retrieval Augmented Generation assistant for asking questions about PDF resear
 ```text
 rag-research-assistant/
 |-- src/
+|   |-- api_client.py
 |   |-- config.py
 |   |-- loader.py
 |   |-- llm.py
 |   |-- main.py
 |   |-- rag_assistant.py
 |   |-- rag_core.py
+|   |-- session_store.py
 |   |-- streamlit_app.py
 |   `-- vector_store.py
+|-- tests/
 |-- .env.example
 |-- .dockerignore
 |-- Dockerfile
@@ -70,6 +81,14 @@ PDF_PATH=paper.pdf
 
 ## Run Streamlit
 
+The UI is an API client, so start the backend first:
+
+```powershell
+uvicorn src.main:app --reload
+```
+
+Then, in a second terminal:
+
 ```powershell
 streamlit run src\streamlit_app.py
 ```
@@ -80,7 +99,20 @@ Open the local URL printed by Streamlit, usually:
 http://localhost:8501
 ```
 
-The UI can use the default PDF or a PDF uploaded in the sidebar. Uploaded PDFs are indexed temporarily for the current Streamlit session.
+Point the UI at a different backend with `API_BASE_URL`:
+
+```env
+API_BASE_URL=http://localhost:8000
+```
+
+The sidebar shows whether the backend is reachable. Each browser session gets its
+own conversation, and **New chat** starts a fresh one.
+
+The UI answers questions about the document configured by `PDF_PATH` on the
+server. PDF upload was removed from the UI in this step: uploading previously
+built a vector store inside Streamlit, which no longer fits the client/server
+split. Restoring it needs a document endpoint on the API (upload a PDF, get a
+document id back, then pass that id to `/ask`), which is not implemented yet.
 
 ## Run CLI
 
@@ -179,11 +211,15 @@ Build the image:
 docker build -t rag-research-assistant .
 ```
 
-Run the Streamlit app:
+Run the Streamlit app. It needs a reachable API, so set `API_BASE_URL` to a
+backend that is already running:
 
 ```powershell
 docker run --rm -p 8501:8501 --env-file .env rag-research-assistant
 ```
+
+The image still ships a single Streamlit command. Running the UI and the API as
+two services (compose, or a second Render service) is a separate step.
 
 Open:
 
@@ -231,6 +267,8 @@ All configuration is read from `.env` or environment variables.
 | `CHUNK_OVERLAP` | `50` | PDF chunk overlap |
 | `TOP_K` | `3` | Number of retrieved chunks |
 | `FAISS_INDEX_PATH` | `faiss_index` | Saved FAISS index directory |
+| `API_BASE_URL` | `http://localhost:8000` | Backend URL used by the Streamlit UI |
+| `API_TIMEOUT` | `60` | Seconds the UI waits for an API answer |
 | `ALLOWED_ORIGINS` | `http://localhost:8501,http://127.0.0.1:8501` | Comma separated CORS origins for the API |
 | `MAX_HISTORY_MESSAGES` | `10` | Messages kept per API session |
 | `MAX_SESSIONS` | `100` | Sessions kept in memory before the oldest is dropped |
@@ -243,7 +281,7 @@ Create `.env` from `.env.example` and set `GOOGLE_API_KEY`.
 
 **PDF not found**
 
-Set `PDF_PATH=paper.pdf`, place a PDF at `data/paper.pdf`, or upload a PDF in Streamlit.
+Set `PDF_PATH=paper.pdf` or place a PDF at `data/paper.pdf` on the machine running the API.
 
 **Gemini model not found**
 
