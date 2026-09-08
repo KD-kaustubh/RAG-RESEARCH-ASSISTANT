@@ -1,6 +1,7 @@
 from langchain_core.documents import Document
 
-from rag_core import ask_question, build_prompt, format_history, sources_from_docs
+from conftest import FakeLLM
+from rag_core import ask_question, build_prompt, extract_text, format_history, sources_from_docs
 
 
 def test_prompt_contains_context_and_question():
@@ -76,3 +77,32 @@ def test_ask_question_includes_history_when_given(fake_vectorstore, fake_llm):
     ask_question("And then?", fake_vectorstore, fake_llm, k=1, history_text="User: hi\nAI: hello")
 
     assert "User: hi" in fake_llm.prompts[0]
+
+
+def test_extract_text_passes_through_plain_string():
+    assert extract_text("an answer") == "an answer"
+
+
+def test_extract_text_joins_content_parts():
+    content = [{"type": "text", "text": "Hello "}, {"type": "text", "text": "world."}]
+
+    assert extract_text(content) == "Hello world."
+
+
+def test_extract_text_ignores_non_text_parts():
+    content = [{"type": "thinking", "thinking": "hmm"}, {"type": "text", "text": "The answer."}]
+
+    assert extract_text(content) == "The answer."
+
+
+def test_extract_text_handles_list_of_strings():
+    assert extract_text(["a", "b"]) == "ab"
+
+
+def test_ask_question_returns_a_string_for_part_list_responses(fake_vectorstore):
+    """Gemini 3.x style response; the API contract requires a plain string."""
+    llm = FakeLLM(answer=[{"type": "text", "text": "Encoder and decoder."}])
+
+    answer, _ = ask_question("What are the parts?", fake_vectorstore, llm, k=1)
+
+    assert answer == "Encoder and decoder."

@@ -8,6 +8,23 @@ except ImportError:
     from config import TOP_K
 
 
+def extract_text(content) -> str:
+    """Gemini 2.5 returns a plain string; Gemini 3.x returns a list of content parts."""
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict) and item.get("type") == "text":
+                parts.append(item.get("text", ""))
+        return "".join(parts)
+
+    return str(content)
+
+
 def build_prompt(context: str, query: str, history_text: str = "") -> str:
     history_block = (
         "Previous conversation (background only, do not treat it as source material):\n"
@@ -36,7 +53,7 @@ def ask_question(
     context = "\n\n".join(doc.page_content for doc in docs)
     prompt = build_prompt(context, query, history_text)
     response = llm.invoke(prompt)
-    answer = response.content if hasattr(response, "content") else str(response)
+    answer = extract_text(response.content) if hasattr(response, "content") else str(response)
     return answer, docs
 
 
