@@ -251,21 +251,40 @@ docker run --rm -p 8000:8000 --env-file .env rag-research-assistant
 
 ## Deploy On Render
 
-This repo includes `render.yaml` for a Docker web service. The default deployed service runs Streamlit.
+`render.yaml` defines two Docker services built from the same repository:
+
+| Service | Runs | Purpose |
+| --- | --- | --- |
+| `rag-api` | `uvicorn src.main:app` | RAG pipeline, FAISS index, `/ask` and `/health` |
+| `rag-ui` | `streamlit run src/streamlit_app.py` | Chat UI, talks to `rag-api` over HTTP |
+
+Both bind to Render's `$PORT`. The API uses `/health` as its health check, which
+reports process liveness only and never calls Gemini, so quota problems cannot
+mark the service unhealthy.
 
 1. Push the repo to GitHub.
-2. In Render, create a new Blueprint from the GitHub repo.
-3. Set the secret environment variable `GOOGLE_API_KEY`.
-4. Deploy the service.
+2. In Render, create a new Blueprint from the repo.
+3. On `rag-api`, set `GOOGLE_API_KEY`. Deploy it first and confirm
+   `https://<rag-api>.onrender.com/health` returns `{"status": "ok"}`.
+4. On `rag-ui`, set `API_BASE_URL` to the backend URL, including the scheme,
+   for example `https://rag-api.onrender.com`.
+5. Deploy `rag-ui` and open its URL. The sidebar shows the backend status.
 
-Optional Render environment variables:
+`ALLOWED_ORIGINS` is only needed if a browser calls the API directly; the UI
+calls it server side, so CORS does not apply to normal use. Leaving it unset in
+Render means no browser origin is allowed, which is the safe default.
 
-```env
-GEMINI_EMBED_MODEL=gemini-embedding-001
-GEMINI_CHAT_MODEL=gemini-2.5-flash
-PDF_PATH=paper.pdf
-TOP_K=3
-```
+Secrets are never committed. `GOOGLE_API_KEY` and `API_BASE_URL` are marked
+`sync: false`, so Render asks for them at deploy time.
+
+### Free tier notes
+
+- Free services sleep when idle, so the first request after a pause is slow.
+- Free instances have no persistent disk, so the API rebuilds the FAISS index
+  after each restart. That costs embedding calls and makes the first question
+  slower; `API_TIMEOUT` is set to 120 seconds on the UI to allow for it.
+- The Gemini free tier caps daily generation requests, which surfaces as a
+  clean "Failed to generate an answer" message rather than a crash.
 
 ## Configuration
 

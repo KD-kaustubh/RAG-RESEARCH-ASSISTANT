@@ -1,10 +1,16 @@
 services:
   - type: web
-    name: rag-research-assistant
+    name: rag-api
     runtime: docker
     plan: free
+    dockerCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
+      # Set in the Render dashboard, never committed.
       - key: GOOGLE_API_KEY
+        sync: false
+      # Set to the deployed UI URL if a browser needs to call the API directly.
+      - key: ALLOWED_ORIGINS
         sync: false
       - key: GEMINI_EMBED_MODEL
         value: gemini-embedding-001
@@ -12,5 +18,27 @@ services:
         value: gemini-2.5-flash
       - key: PDF_PATH
         value: paper.pdf
+      - key: TOP_K
+        value: "3"
+      - key: CHUNK_SIZE
+        value: "500"
+      - key: CHUNK_OVERLAP
+        value: "50"
+      - key: MAX_HISTORY_MESSAGES
+        value: "10"
+      - key: MAX_SESSIONS
+        value: "100"
+
+  - type: web
+    name: rag-ui
+    runtime: docker
+    plan: free
+    dockerCommand: streamlit run src/streamlit_app.py --server.address 0.0.0.0 --server.port $PORT
+    envVars:
+      # Set to the rag-api service URL, for example https://rag-api.onrender.com
+      - key: API_BASE_URL
+        sync: false
+      - key: API_TIMEOUT
+        value: "120"
       - key: TOP_K
         value: "3"
