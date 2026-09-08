@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV PORT=8501
+ENV PORT=8000
 
 WORKDIR /app
 
@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 8501
+EXPOSE 8000 8501
 
-CMD streamlit run src/streamlit_app.py --server.address=0.0.0.0 --server.port=${PORT}
+# The API is the default service; the Streamlit service overrides this command.
+CMD uvicorn src.main:app --host 0.0.0.0 --port ${PORT}

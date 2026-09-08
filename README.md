@@ -9,7 +9,11 @@ itself. The CLI still uses the RAG core directly.
 
 ```text
 Streamlit UI --HTTP--> FastAPI --> RAG core --> FAISS / Gemini
+   :8501                 :8000
 ```
+
+In Docker these are two services built from one image: the API owns the RAG
+pipeline and the FAISS index, and the UI only makes HTTP calls.
 
 ## Features
 
@@ -205,33 +209,44 @@ network access and no prebuilt FAISS index.
 
 ## Docker
 
-Build the image:
+Both services share one image. `docker-compose.yml` runs the API on port 8000 and
+the UI on port 8501, and the UI reaches the API at `http://api:8000` on the
+compose network.
+
+Make sure `.env` exists with your `GOOGLE_API_KEY`, then:
 
 ```powershell
-docker build -t rag-research-assistant .
+docker compose up --build
 ```
 
-Run the Streamlit app. It needs a reachable API, so set `API_BASE_URL` to a
-backend that is already running:
-
-```powershell
-docker run --rm -p 8501:8501 --env-file .env rag-research-assistant
-```
-
-The image still ships a single Streamlit command. Running the UI and the API as
-two services (compose, or a second Render service) is a separate step.
-
-Open:
+Open the UI:
 
 ```text
 http://localhost:8501
 ```
 
-To run the FastAPI server from the same image:
+The API is available separately:
+
+```text
+http://localhost:8000/health
+http://localhost:8000/docs
+```
+
+Stop everything with:
 
 ```powershell
-docker run --rm -p 8000:8000 --env-file .env rag-research-assistant `
-  python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
+docker compose down
+```
+
+The API container builds the FAISS index on its first question and keeps it in a
+named volume, so later restarts reuse it instead of re-embedding the PDF. The UI
+never builds an index.
+
+To run a single service from the image, override the command. The image defaults
+to the API:
+
+```powershell
+docker run --rm -p 8000:8000 --env-file .env rag-research-assistant
 ```
 
 ## Deploy On Render
