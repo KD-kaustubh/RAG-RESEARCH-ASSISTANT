@@ -9,7 +9,7 @@ A Retrieval Augmented Generation assistant for asking questions about PDF resear
 - Source excerpts with page numbers
 - CLI single-question mode
 - CLI interactive chat mode
-- FastAPI `/ask` endpoint
+- FastAPI `/ask` and `/health` endpoints
 - FAISS index caching for the default PDF
 - Dockerfile and Render blueprint for deployment
 
@@ -114,6 +114,12 @@ Open the API docs:
 http://127.0.0.1:8000/docs
 ```
 
+Health check:
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/health"
+```
+
 Example request:
 
 ```powershell
@@ -198,6 +204,7 @@ All configuration is read from `.env` or environment variables.
 | `CHUNK_OVERLAP` | `50` | PDF chunk overlap |
 | `TOP_K` | `3` | Number of retrieved chunks |
 | `FAISS_INDEX_PATH` | `faiss_index` | Saved FAISS index directory |
+| `ALLOWED_ORIGINS` | `http://localhost:8501,http://127.0.0.1:8501` | Comma separated CORS origins for the API |
 
 ## Troubleshooting
 

@@ -17,6 +17,13 @@ TOP_K = int(os.getenv("TOP_K", "3"))
 
 FAISS_INDEX_PATH = os.getenv("FAISS_INDEX_PATH", "faiss_index")
 
+_DEFAULT_ALLOWED_ORIGINS = "http://localhost:8501,http://127.0.0.1:8501"
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", _DEFAULT_ALLOWED_ORIGINS).split(",")
+    if origin.strip()
+]
+
 
 def require_api_key() -> None:
     if not GOOGLE_API_KEY:

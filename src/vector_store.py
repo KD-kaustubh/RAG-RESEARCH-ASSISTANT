@@ -26,7 +26,7 @@ def build_vectorstore(
     chunk_overlap: int = CHUNK_OVERLAP,
 ) -> FAISS:
     if not os.path.exists(pdf_path):
-        raise SystemExit(f"PDF not found: {pdf_path}")
+        raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
     documents = load_pdf(pdf_path)
     text_splitter = RecursiveCharacterTextSplitter(

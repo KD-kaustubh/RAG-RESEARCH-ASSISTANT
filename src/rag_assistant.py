@@ -99,6 +99,6 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except RuntimeError as exc:
+    except (RuntimeError, FileNotFoundError) as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(1)
