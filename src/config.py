@@ -8,7 +8,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GEMINI_EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "gemini-embedding-001")
 GEMINI_CHAT_MODEL = os.getenv("GEMINI_CHAT_MODEL", "gemini-2.5-flash")
 
-PDF_PATH = os.getenv("PDF_PATH", os.path.join("data", "paper.pdf"))
+PDF_PATH = os.getenv("PDF_PATH", "paper.pdf")
 QUERY_DEFAULT = os.getenv("QUERY", "What is the main idea of the paper?")
 
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))
