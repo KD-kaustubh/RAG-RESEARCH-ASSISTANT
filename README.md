@@ -155,6 +155,22 @@ Example response shape:
 }
 ```
 
+## Tests
+
+Install the development dependencies and run the suite:
+
+```powershell
+pip install -r requirements-dev.txt
+pytest -q
+```
+
+The tests cover prompt building, source/page metadata, history formatting,
+chunking and FAISS persistence, and the API (`/health`, `/ask`, validation
+errors, failure handling and session memory).
+
+Gemini calls are replaced with test doubles, so the suite needs no API key, no
+network access and no prebuilt FAISS index.
+
 ## Docker
 
 Build the image:

@@ -5,6 +5,7 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+tests/
 .mypy_cache/
 .ruff_cache/
 faiss_index/
