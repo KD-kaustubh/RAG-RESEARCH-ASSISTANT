@@ -1,6 +1,7 @@
 import argparse
 import sys
 
+
 try:
     from .config import (
         PDF_PATH,
@@ -96,4 +97,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)

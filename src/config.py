@@ -20,4 +20,4 @@ FAISS_INDEX_PATH = os.getenv("FAISS_INDEX_PATH", "faiss_index")
 
 def require_api_key() -> None:
     if not GOOGLE_API_KEY:
-        raise SystemExit("Missing GOOGLE_API_KEY. Set it in .env or your environment.")
+        raise RuntimeError("Missing GOOGLE_API_KEY. Set it in .env or your environment.")
