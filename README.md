@@ -18,6 +18,7 @@ pipeline and the FAISS index, and the UI only makes HTTP calls.
 ## Features
 
 - Streamlit chat UI that talks to the API over HTTP
+- PDF cleanup and cross-page chunking so sentences split by a page break stay whole
 - Source excerpts with page numbers
 - CLI single-question mode
 - CLI interactive chat mode

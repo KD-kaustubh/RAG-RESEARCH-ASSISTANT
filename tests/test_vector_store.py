@@ -119,6 +119,35 @@ def test_real_pdf_produces_chunks_that_span_pages():
     assert any(len(c.metadata.get("pages", [])) > 1 for c in real_pdf_chunks())
 
 
+def test_both_encoder_sublayers_land_in_one_chunk():
+    """The production failure: sub-layer 2 was unreachable, split across a page."""
+    chunks = [
+        c
+        for c in real_pdf_chunks()
+        if "multi-head self-attention mechanism" in c.page_content
+        and "position-wise fully connected feed-forward network" in c.page_content
+    ]
+
+    assert chunks
+    assert len(chunks[0].metadata["pages"]) > 1
+
+
+def test_page_furniture_no_longer_interrupts_the_sentence():
+    chunks = real_pdf_chunks()
+    sentence = [c for c in chunks if "position-wise fully connected" in c.page_content][0]
+
+    assert "\n2\nFigure 1" not in sentence.page_content
+    # The caption is kept elsewhere in the document, not deleted.
+    assert any("Figure 1: The Transformer" in c.page_content for c in chunks)
+
+
+def test_hyphenated_words_are_repaired_in_the_real_pdf():
+    text = " ".join(c.page_content for c in real_pdf_chunks())
+
+    assert "convolutional layers commonly" in text
+    assert "sequence-aligned" in text  # a real compound keeps its hyphen
+
+
 def test_encoder_sublayer_chunk_continues_past_the_page_break():
     """The production bug: this chunk stopped at the end of its page, mid-sentence."""
     marker = "the second is a simple, position-"
@@ -129,7 +158,7 @@ def test_encoder_sublayer_chunk_continues_past_the_page_break():
         # Under the old per-page splitter this chunk came from one page and ended here.
         assert len(chunk.metadata["pages"]) > 1
         after_marker = chunk.page_content.split(marker, 1)[1]
-        assert "Figure 1: The Transformer" in after_marker
+        assert after_marker.startswith("wise fully connected feed-forward network")
 
 
 def test_index_exists_false_for_empty_dir(tmp_path):

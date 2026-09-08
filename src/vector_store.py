@@ -8,10 +8,24 @@ try:
     from .config import CHUNK_SIZE, CHUNK_OVERLAP, FAISS_INDEX_PATH, GEMINI_EMBED_MODEL
     from .loader import load_pdf
     from .llm import get_embeddings
+    from .pdf_text import (
+        build_vocabulary,
+        continues_sentence,
+        join_hyphenated,
+        strip_page_number,
+        take_leading_captions,
+    )
 except ImportError:
     from config import CHUNK_SIZE, CHUNK_OVERLAP, FAISS_INDEX_PATH, GEMINI_EMBED_MODEL
     from loader import load_pdf
     from llm import get_embeddings
+    from pdf_text import (
+        build_vocabulary,
+        continues_sentence,
+        join_hyphenated,
+        strip_page_number,
+        take_leading_captions,
+    )
 
 
 def _index_exists(index_path: str) -> bool:
@@ -20,19 +34,53 @@ def _index_exists(index_path: str) -> bool:
     )
 
 
+def _clean_pages(documents: List[Document]):
+    """Normalize each page and repair sentences broken at page boundaries."""
+    vocabulary = build_vocabulary([document.page_content for document in documents])
+
+    pages = []
+    for document in documents:
+        text = join_hyphenated(strip_page_number(document.page_content), vocabulary)
+        if text.strip():
+            pages.append([document, text, "\n"])
+
+    for index in range(1, len(pages)):
+        previous = pages[index - 1][1]
+        if not continues_sentence(previous):
+            continue
+
+        # A caption printed at the top of the page interrupts the running sentence.
+        captions, body = take_leading_captions(pages[index][1])
+        if captions:
+            pages[index][1] = body + "\n" + "\n".join(captions)
+
+        current = pages[index][1]
+        if previous.rstrip().endswith("-") and current[:1].islower():
+            left = previous.rstrip()[:-1]
+            word = left.split()[-1] if left.split() else ""
+            merged = word + current.split("\n", 1)[0].split(" ", 1)[0]
+            if merged.lower() in vocabulary:
+                pages[index - 1][1] = previous.rstrip()[:-1]
+            else:
+                pages[index - 1][1] = previous.rstrip()
+            pages[index - 1][2] = ""
+
+    return pages
+
+
 def _join_pages(documents: List[Document]):
     """Concatenate page documents, remembering which span of text each page owns."""
     pieces = []
     spans = []
     cursor = 0
 
-    for document in documents:
-        text = document.page_content
-        if not text:
-            continue
-        if pieces:
-            pieces.append("\n")
-            cursor += 1
+    pages = _clean_pages(documents)
+    for position, (document, text, _) in enumerate(pages):
+        if position:
+            joiner = pages[position - 1][2]
+            if joiner:
+                pieces.append(joiner)
+                cursor += len(joiner)
         start = cursor
         pieces.append(text)
         cursor += len(text)
