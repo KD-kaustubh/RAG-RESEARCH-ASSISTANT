@@ -75,6 +75,36 @@ class RagAPIClient:
 
         return self._parse_answer(response)
 
+    def upload(self, filename: str, content: bytes) -> Dict[str, Any]:
+        try:
+            response = self.session.post(
+                f"{self.base_url}/upload",
+                files={"file": (filename, content, "application/pdf")},
+                timeout=self.timeout,
+            )
+        except requests.Timeout as exc:
+            logger.warning("Upload to %s timed out: %s", self.base_url, exc)
+            raise APIError("Indexing the document took too long. Please try again.")
+        except requests.ConnectionError as exc:
+            logger.warning("Could not connect to %s: %s", self.base_url, exc)
+            raise APIError(f"Cannot reach the API at {self.base_url}. Is the backend running?")
+        except requests.RequestException:
+            logger.exception("Upload request failed")
+            raise APIError("The upload failed.")
+
+        if response.status_code >= 400:
+            raise APIError(self._error_message(response))
+
+        try:
+            data = response.json()
+        except ValueError:
+            logger.warning("API returned a non JSON upload response")
+            raise APIError("The API returned an unexpected response.")
+
+        if not isinstance(data, dict) or data.get("status") != "ok":
+            raise APIError("The API returned an unexpected response.")
+        return data
+
     def _error_message(self, response: requests.Response) -> str:
         detail = None
         try:

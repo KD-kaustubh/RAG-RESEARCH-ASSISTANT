@@ -17,6 +17,9 @@ TOP_K = int(os.getenv("TOP_K", "3"))
 
 FAISS_INDEX_PATH = os.getenv("FAISS_INDEX_PATH", "faiss_index")
 
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
+MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "10"))
+
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 API_TIMEOUT = int(os.getenv("API_TIMEOUT", "60"))
 

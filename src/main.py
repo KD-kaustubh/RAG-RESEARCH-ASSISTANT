@@ -1,10 +1,12 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from pypdf.errors import PdfReadError
 
 try:
     from .config import (
@@ -13,8 +15,10 @@ try:
         CHUNK_SIZE,
         FAISS_INDEX_PATH,
         MAX_HISTORY_MESSAGES,
+        MAX_UPLOAD_MB,
         PDF_PATH,
         TOP_K,
+        UPLOAD_DIR,
     )
     from .llm import get_llm
     from .rag_core import ask_question as run_rag_query, format_history, sources_from_docs
@@ -27,8 +31,10 @@ except ImportError:
         CHUNK_SIZE,
         FAISS_INDEX_PATH,
         MAX_HISTORY_MESSAGES,
+        MAX_UPLOAD_MB,
         PDF_PATH,
         TOP_K,
+        UPLOAD_DIR,
     )
     from llm import get_llm
     from rag_core import ask_question as run_rag_query, format_history, sources_from_docs
@@ -93,9 +99,67 @@ class AskResponse(BaseModel):
     session_id: Optional[str] = None
 
 
+class UploadResponse(BaseModel):
+    status: str
+    filename: str
+    chunks: int
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.post("/upload", response_model=UploadResponse)
+async def upload_document(file: UploadFile = File(...)):
+    """Replace the active document with an uploaded PDF and rebuild the index."""
+    filename = Path(file.filename or "").name
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+    if len(content) > MAX_UPLOAD_MB * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=f"The file is larger than {MAX_UPLOAD_MB} MB.")
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="The uploaded file is not a valid PDF.")
+
+    # A fixed server-side name: the client filename is only ever shown back, never used as a path.
+    upload_dir = Path(UPLOAD_DIR)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    stored_pdf = upload_dir / "active.pdf"
+    stored_pdf.write_bytes(content)
+
+    try:
+        vectorstore = get_vectorstore(
+            pdf_path=str(stored_pdf),
+            index_path=FAISS_INDEX_PATH,
+            chunk_size=CHUNK_SIZE,
+            chunk_overlap=CHUNK_OVERLAP,
+            rebuild=True,
+        )
+        llm = _resources.get("llm") or get_llm()
+    except PdfReadError:
+        logger.exception("Uploaded PDF could not be parsed")
+        raise HTTPException(status_code=400, detail="The PDF could not be read.")
+    except RuntimeError as exc:
+        logger.exception("Configuration error while indexing the upload")
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception:
+        logger.exception("Failed to index the uploaded document")
+        raise HTTPException(status_code=502, detail="Could not index the uploaded document.")
+
+    _resources["vectorstore"] = vectorstore
+    _resources["llm"] = llm
+    # A new paper must not inherit conversations about the previous one.
+    session_store.clear_all()
+
+    return {
+        "status": "ok",
+        "filename": filename,
+        "chunks": getattr(vectorstore.index, "ntotal", 0),
+    }
 
 
 @app.post("/ask", response_model=AskResponse)

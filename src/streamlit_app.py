@@ -47,6 +47,27 @@ def main() -> None:
     st.title("RAG Research Assistant")
 
     with st.sidebar:
+        st.header("Document")
+        uploaded = st.file_uploader("Upload research paper", type=["pdf"])
+        if uploaded is not None and st.button("Index this paper", use_container_width=True):
+            with st.spinner("Indexing the document..."):
+                try:
+                    result = client.upload(uploaded.name, uploaded.getvalue())
+                except APIError as exc:
+                    st.error(str(exc))
+                else:
+                    st.session_state.document = result
+                    _start_new_chat()
+                    st.rerun()
+
+        active = st.session_state.get("document")
+        if active:
+            st.success(f"Active paper: {active['filename']}")
+            st.caption(f"{active['chunks']} chunks indexed. Questions now refer to this paper.")
+        else:
+            st.caption("Using the default paper. Upload a PDF to replace it.")
+
+        st.divider()
         st.header("Retrieval")
         top_k = st.slider("Sources", min_value=1, max_value=8, value=TOP_K)
 

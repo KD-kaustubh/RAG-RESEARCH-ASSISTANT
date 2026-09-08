@@ -10,6 +10,7 @@ tests/
 .mypy_cache/
 .ruff_cache/
 faiss_index/
+uploads/
 api_stdout.log
 api_stderr.log
 .git/

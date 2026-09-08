@@ -52,6 +52,11 @@ class SessionStore:
         with self._lock:
             self._sessions.pop(session_id, None)
 
+    def clear_all(self) -> None:
+        """Used when the active document changes, so answers cannot cite the old paper."""
+        with self._lock:
+            self._sessions.clear()
+
     def session_count(self) -> int:
         with self._lock:
             return len(self._sessions)

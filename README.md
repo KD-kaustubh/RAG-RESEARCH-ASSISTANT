@@ -1,50 +1,80 @@
 # RAG Research Assistant
 
-A Retrieval Augmented Generation assistant for asking questions about PDF research papers. It uses LangChain, FAISS, Google Gemini, Streamlit, FastAPI, and a CLI.
+## Overview
+
+Upload a research paper, ask questions about it, and get answers that are grounded
+in the document itself and cited back to the page they came from. If the paper does
+not contain the answer, the assistant says so rather than inventing one.
+
+The project ships with the "Attention Is All You Need" paper so it works the moment
+you start it, and any PDF you upload replaces it as the active document.
+
+## Key Features
+
+- PDF research paper upload through the UI
+- PDF text cleaning that repairs page numbers, interrupted captions and words broken across lines
+- Cross-page chunking, so a sentence split by a page break stays whole
+- Gemini embeddings and FAISS vector search
+- Grounded Gemini answers with page-level source citations
+- Session-based conversational memory, so follow-up questions resolve "it" and "its"
+- FastAPI backend and a Streamlit frontend that talks to it over HTTP
+- CLI for single questions and interactive chat
+- Docker Compose setup running the API and UI as separate services
+- 118 automated tests that need no API key or network access
+- Render deployment blueprint
 
 ## Architecture
 
-The Streamlit UI is a client of the API. It never runs retrieval or calls Gemini
-itself. The CLI still uses the RAG core directly.
+The UI is purely an API client. It never imports the RAG code, touches FAISS, or
+calls Gemini; the API owns all of that. The CLI talks to the RAG core directly.
 
 ```text
-Streamlit UI --HTTP--> FastAPI --> RAG core --> FAISS / Gemini
-   :8501                 :8000
+Streamlit UI  --HTTP-->  FastAPI  -->  RAG core  -->  FAISS + Gemini
+    :8501                 :8000
 ```
 
-In Docker these are two services built from one image: the API owns the RAG
-pipeline and the FAISS index, and the UI only makes HTTP calls.
+## RAG Pipeline
 
-## Features
+```text
+PDF
+  -> text extraction (PyPDFLoader)
+  -> text normalization (page numbers, captions, hyphenated line breaks)
+  -> cross-page chunking (RecursiveCharacterTextSplitter, page metadata preserved)
+  -> embeddings (Gemini)
+  -> FAISS index
+  -> similarity retrieval (top k)
+  -> prompt with retrieved context + bounded chat history
+  -> Gemini
+  -> grounded answer + page citations
+```
 
-- Streamlit chat UI that talks to the API over HTTP
-- PDF cleanup and cross-page chunking so sentences split by a page break stay whole
-- Source excerpts with page numbers
-- CLI single-question mode
-- CLI interactive chat mode
-- FastAPI `/ask` and `/health` endpoints
-- FAISS index caching for the default PDF
-- Dockerfile and Render blueprint for deployment
+## Tech Stack
+
+Python 3.12, FastAPI, Streamlit, LangChain, FAISS (`faiss-cpu`), Google Gemini
+(`gemini-2.5-flash` for chat, `gemini-embedding-001` for embeddings), pypdf,
+Pydantic, pytest, Docker Compose, Render.
 
 ## Project Structure
 
 ```text
 rag-research-assistant/
 |-- src/
-|   |-- api_client.py
-|   |-- config.py
-|   |-- loader.py
-|   |-- llm.py
-|   |-- main.py
-|   |-- rag_assistant.py
-|   |-- rag_core.py
-|   |-- session_store.py
-|   |-- streamlit_app.py
-|   `-- vector_store.py
+|   |-- api_client.py      HTTP client the UI uses to reach the API
+|   |-- config.py          environment-driven settings
+|   |-- loader.py          PDF loading
+|   |-- pdf_text.py        extraction cleanup
+|   |-- vector_store.py    chunking, FAISS build/load
+|   |-- llm.py             Gemini chat and embedding models
+|   |-- rag_core.py        retrieval, prompt, citations
+|   |-- session_store.py   bounded in-memory chat history
+|   |-- main.py            FastAPI app
+|   |-- streamlit_app.py   chat UI
+|   `-- rag_assistant.py   CLI
 |-- tests/
 |-- .env.example
 |-- .dockerignore
 |-- Dockerfile
+|-- docker-compose.yml
 |-- README.md
 |-- render.yaml
 |-- requirements.txt
@@ -192,6 +222,34 @@ Example response shape:
 }
 ```
 
+## API
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Liveness check. Returns `{"status": "ok"}` and never calls Gemini, so provider quota cannot mark the service unhealthy. |
+| `POST` | `/ask` | Ask a question. Body: `query` (required), `k` (1-20), `session_id` (optional). Returns the answer, page-cited sources, and the session id. |
+| `POST` | `/upload` | Replace the active document with a PDF (multipart `file`). Rebuilds the index and returns `{"status", "filename", "chunks"}`. |
+
+Uploading replaces the active document and clears existing conversations, so a
+new paper never inherits history about the previous one.
+
+Errors use plain JSON with a `detail` message and never expose tracebacks,
+internal paths, or credentials:
+
+| Status | Meaning |
+| --- | --- |
+| `400` | Not a PDF, empty file, or a PDF that cannot be read |
+| `413` | Upload above `MAX_UPLOAD_MB` |
+| `422` | Invalid request body |
+| `502` | Gemini failed or was rate limited |
+| `503` | Missing API key or the document could not be loaded |
+
+Upload example:
+
+```powershell
+curl.exe -X POST "http://127.0.0.1:8000/upload" -F "file=@paper.pdf;type=application/pdf"
+```
+
 ## Tests
 
 Install the development dependencies and run the suite:
@@ -201,9 +259,11 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
-The tests cover prompt building, source/page metadata, history formatting,
-chunking and FAISS persistence, and the API (`/health`, `/ask`, validation
-errors, failure handling and session memory).
+118 tests cover prompt building, source and page metadata, history formatting,
+PDF cleanup, cross-page chunking, FAISS persistence, upload validation and
+indexing, the API (`/health`, `/ask`, `/upload`, validation and failure paths),
+the UI's use of the API client, and a fixed retrieval evaluation set for the
+bundled paper.
 
 Gemini calls are replaced with test doubles, so the suite needs no API key, no
 network access and no prebuilt FAISS index.
@@ -296,7 +356,7 @@ All configuration is read from `.env` or environment variables.
 | `GOOGLE_API_KEY` | required | Gemini API key |
 | `GEMINI_EMBED_MODEL` | `gemini-embedding-001` | Embedding model |
 | `GEMINI_CHAT_MODEL` | `gemini-2.5-flash` | Chat model |
-| `PDF_PATH` | `data/paper.pdf` | Default PDF path |
+| `PDF_PATH` | `paper.pdf` | Default PDF used until something is uploaded |
 | `QUERY` | `What is the main idea of the paper?` | Default CLI question |
 | `CHUNK_SIZE` | `500` | PDF chunk size |
 | `CHUNK_OVERLAP` | `50` | PDF chunk overlap |
@@ -307,6 +367,8 @@ All configuration is read from `.env` or environment variables.
 | `ALLOWED_ORIGINS` | `http://localhost:8501,http://127.0.0.1:8501` | Comma separated CORS origins for the API |
 | `MAX_HISTORY_MESSAGES` | `10` | Messages kept per API session |
 | `MAX_SESSIONS` | `100` | Sessions kept in memory before the oldest is dropped |
+| `UPLOAD_DIR` | `uploads` | Where the active uploaded PDF is stored |
+| `MAX_UPLOAD_MB` | `10` | Largest accepted upload |
 
 ## Troubleshooting
 
@@ -316,7 +378,7 @@ Create `.env` from `.env.example` and set `GOOGLE_API_KEY`.
 
 **PDF not found**
 
-Set `PDF_PATH=paper.pdf` or place a PDF at `data/paper.pdf` on the machine running the API.
+Point `PDF_PATH` at a PDF on the machine running the API, or upload one through the UI.
 
 **Gemini model not found**
 
@@ -340,3 +402,26 @@ chcp 65001
 ```powershell
 python src\rag_assistant.py --rebuild-index
 ```
+
+## Limitations
+
+- One active document at a time. Uploading a paper replaces the previous one; this
+  is deliberate, since document management is not what the project sets out to show.
+- Chat history lives in the API process, so it is lost on restart and is not shared
+  across multiple workers.
+- Answer throughput depends on the Gemini plan in use. On the free tier the daily
+  request cap is easy to reach, which surfaces as a clean "Failed to generate an
+  answer" rather than a crash.
+- Free Render instances sleep when idle and have no persistent disk, so the first
+  request after a pause is slow and the index is rebuilt after a restart.
+- Retrieval is plain vector similarity. Most questions about the bundled paper are
+  answered well, but a broadly phrased one can still miss the best passage.
+
+## Design Philosophy
+
+The project keeps the architecture small on purpose. Every part earns its place by
+demonstrating a step of the RAG pipeline — ingestion, cleaning, chunking,
+embeddings, vector search, grounded generation, citations, and conversation state —
+with a clean API/UI split, tests, and a working container setup around it. Adding a
+database, a queue, or object storage would grow the diagram without teaching
+anything more about retrieval-augmented generation, so they are left out.
