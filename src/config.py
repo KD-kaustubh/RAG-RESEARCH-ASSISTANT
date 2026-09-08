@@ -17,6 +17,9 @@ TOP_K = int(os.getenv("TOP_K", "3"))
 
 FAISS_INDEX_PATH = os.getenv("FAISS_INDEX_PATH", "faiss_index")
 
+MAX_HISTORY_MESSAGES = int(os.getenv("MAX_HISTORY_MESSAGES", "10"))
+MAX_SESSIONS = int(os.getenv("MAX_SESSIONS", "100"))
+
 _DEFAULT_ALLOWED_ORIGINS = "http://localhost:8501,http://127.0.0.1:8501"
 ALLOWED_ORIGINS = [
     origin.strip()

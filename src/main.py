@@ -12,11 +12,13 @@ try:
         CHUNK_OVERLAP,
         CHUNK_SIZE,
         FAISS_INDEX_PATH,
+        MAX_HISTORY_MESSAGES,
         PDF_PATH,
         TOP_K,
     )
     from .llm import get_llm
-    from .rag_core import ask_question as run_rag_query, sources_from_docs
+    from .rag_core import ask_question as run_rag_query, format_history, sources_from_docs
+    from .session_store import SessionStore
     from .vector_store import get_vectorstore
 except ImportError:
     from config import (
@@ -24,16 +26,19 @@ except ImportError:
         CHUNK_OVERLAP,
         CHUNK_SIZE,
         FAISS_INDEX_PATH,
+        MAX_HISTORY_MESSAGES,
         PDF_PATH,
         TOP_K,
     )
     from llm import get_llm
-    from rag_core import ask_question as run_rag_query, sources_from_docs
+    from rag_core import ask_question as run_rag_query, format_history, sources_from_docs
+    from session_store import SessionStore
     from vector_store import get_vectorstore
 
 logger = logging.getLogger(__name__)
 
 _resources: dict = {}
+session_store = SessionStore()
 
 
 def load_resources() -> dict:
@@ -74,6 +79,7 @@ app.add_middleware(
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
     k: Optional[int] = Field(None, ge=1, le=20)
+    session_id: Optional[str] = Field(None, min_length=1, max_length=64)
 
 
 class Source(BaseModel):
@@ -84,6 +90,7 @@ class Source(BaseModel):
 class AskResponse(BaseModel):
     answer: str
     sources: List[Source]
+    session_id: Optional[str] = None
 
 
 @app.get("/health")
@@ -107,15 +114,28 @@ def ask_question(request: QueryRequest):
 
     k = request.k or TOP_K
 
+    history_text = ""
+    if request.session_id:
+        history = session_store.get_history(request.session_id)
+        history_text = format_history(history, limit=MAX_HISTORY_MESSAGES)
+
     try:
         answer, docs = run_rag_query(
             request.query,
             resources["vectorstore"],
             resources["llm"],
             k=k,
+            history_text=history_text,
         )
     except Exception:
         logger.exception("Failed to answer question")
         raise HTTPException(status_code=502, detail="Failed to generate an answer.")
 
-    return {"answer": answer, "sources": sources_from_docs(docs)}
+    if request.session_id:
+        session_store.add_turn(request.session_id, request.query, answer)
+
+    return {
+        "answer": answer,
+        "sources": sources_from_docs(docs),
+        "session_id": request.session_id,
+    }

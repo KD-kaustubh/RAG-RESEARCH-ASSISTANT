@@ -9,7 +9,12 @@ except ImportError:
 
 
 def build_prompt(context: str, query: str, history_text: str = "") -> str:
-    history_block = f"Previous conversation:\n{history_text}\n\n" if history_text else ""
+    history_block = (
+        "Previous conversation (background only, do not treat it as source material):\n"
+        f"{history_text}\n\n"
+        if history_text
+        else ""
+    )
     return (
         "Answer the question using only the context below. If the context is insufficient, "
         "say you do not know.\n\n"

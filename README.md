@@ -130,6 +130,17 @@ Invoke-RestMethod `
   -Body '{"query":"What is the Transformer?","k":2}'
 ```
 
+Pass a `session_id` to ask follow-up questions. History is kept in memory per
+session and is lost when the server restarts:
+
+```powershell
+Invoke-RestMethod `
+  -Uri "http://127.0.0.1:8000/ask" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body '{"query":"What are its main components?","session_id":"demo-1"}'
+```
+
 Example response shape:
 
 ```json
@@ -205,6 +216,8 @@ All configuration is read from `.env` or environment variables.
 | `TOP_K` | `3` | Number of retrieved chunks |
 | `FAISS_INDEX_PATH` | `faiss_index` | Saved FAISS index directory |
 | `ALLOWED_ORIGINS` | `http://localhost:8501,http://127.0.0.1:8501` | Comma separated CORS origins for the API |
+| `MAX_HISTORY_MESSAGES` | `10` | Messages kept per API session |
+| `MAX_SESSIONS` | `100` | Sessions kept in memory before the oldest is dropped |
 
 ## Troubleshooting
 
