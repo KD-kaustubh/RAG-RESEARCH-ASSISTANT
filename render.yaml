@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: rag-research-assistant
+    runtime: docker
+    plan: free
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GEMINI_EMBED_MODEL
+        value: gemini-embedding-001
+      - key: GEMINI_CHAT_MODEL
+        value: gemini-2.5-flash
+      - key: PDF_PATH
+        value: paper.pdf
+      - key: TOP_K
+        value: "3"

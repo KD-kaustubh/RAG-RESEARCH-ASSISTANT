@@ -1,0 +1,14 @@
+.env
+.venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+faiss_index/
+api_stdout.log
+api_stderr.log
+.git/
+.gitignore
