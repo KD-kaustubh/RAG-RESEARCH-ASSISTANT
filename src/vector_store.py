@@ -1,6 +1,7 @@
 import os
-from typing import Optional
+from typing import List, Optional
 from langchain_community.vectorstores import FAISS
+from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 try:
@@ -19,6 +20,61 @@ def _index_exists(index_path: str) -> bool:
     )
 
 
+def _join_pages(documents: List[Document]):
+    """Concatenate page documents, remembering which span of text each page owns."""
+    pieces = []
+    spans = []
+    cursor = 0
+
+    for document in documents:
+        text = document.page_content
+        if not text:
+            continue
+        if pieces:
+            pieces.append("\n")
+            cursor += 1
+        start = cursor
+        pieces.append(text)
+        cursor += len(text)
+        spans.append((start, cursor, document))
+
+    return "".join(pieces), spans
+
+
+def split_documents(
+    documents: List[Document],
+    chunk_size: int = CHUNK_SIZE,
+    chunk_overlap: int = CHUNK_OVERLAP,
+) -> List[Document]:
+    """Split the whole document, so a sentence crossing a page break stays in one chunk."""
+    text, spans = _join_pages(documents)
+    if not text:
+        return []
+
+    splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+
+    chunks = []
+    search_from = 0
+    for content in splitter.split_text(text):
+        start = text.find(content, search_from)
+        if start == -1:
+            start = text.find(content)
+        if start == -1:
+            continue
+        end = start + len(content)
+        # Chunks overlap, so the next one may begin before this one ends.
+        search_from = start + 1
+
+        covered = [doc for span_start, span_end, doc in spans if span_start < end and span_end > start]
+        metadata = dict(covered[0].metadata) if covered else {}
+        if covered:
+            metadata["pages"] = [doc.metadata.get("page") for doc in covered]
+
+        chunks.append(Document(page_content=content, metadata=metadata))
+
+    return chunks
+
+
 def build_vectorstore(
     pdf_path: str,
     embeddings,
@@ -29,11 +85,7 @@ def build_vectorstore(
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
     documents = load_pdf(pdf_path)
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-    )
-    chunks = text_splitter.split_documents(documents)
+    chunks = split_documents(documents, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     return FAISS.from_documents(chunks, embeddings)
 
 
