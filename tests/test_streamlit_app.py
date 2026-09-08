@@ -53,7 +53,7 @@ def test_answer_and_sources_come_from_the_api_response(app):
 
     rendered = [element.value for element in app.markdown]
     assert any("Answer to: What is the Transformer?" in text for text in rendered)
-    assert any("Source 1 - page 3" in text for text in rendered)
+    assert any("Source 1" in text and "Page 3" in text for text in rendered)
 
 
 def test_same_session_id_is_reused_for_follow_ups(app):
@@ -73,6 +73,22 @@ def test_new_chat_starts_a_new_session(app):
     app.chat_input[0].set_value("second").run()
 
     assert last_client().calls[-1]["session_id"] != first_session
+
+
+def test_example_question_button_sends_that_question(app):
+    example = [b for b in app.button if b.label == "What is the main idea of this paper?"]
+
+    assert example, "expected example questions on the empty state"
+    example[0].click().run()
+
+    assert last_client().calls[0]["query"] == "What is the main idea of this paper?"
+
+
+def test_examples_disappear_once_the_chat_has_started(app):
+    app.chat_input[0].set_value("first question").run()
+
+    labels = [b.label for b in app.button]
+    assert "What is the main idea of this paper?" not in labels
 
 
 def test_api_failure_is_shown_as_a_friendly_message(app, monkeypatch):

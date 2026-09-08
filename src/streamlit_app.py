@@ -10,7 +10,13 @@ except ImportError:
     from config import TOP_K
 
 
-st.set_page_config(page_title="RAG Research Assistant", page_icon=":page_facing_up:", layout="wide")
+st.set_page_config(page_title="RAG Research Assistant", page_icon=":page_facing_up:", layout="centered")
+
+EXAMPLE_QUESTIONS = [
+    "What is the main idea of this paper?",
+    "What method does it propose?",
+    "What are the main results?",
+]
 
 
 @st.cache_resource(show_spinner=False)
@@ -28,12 +34,22 @@ def render_sources(sources) -> None:
     if not sources:
         return
 
-    with st.expander("Sources", expanded=True):
+    with st.expander(f"Sources ({len(sources)})", expanded=False):
         for index, source in enumerate(sources, start=1):
             page = source.get("page")
-            page_label = f"page {page}" if page else "page unknown"
-            st.markdown(f"**Source {index} - {page_label}**")
+            page_label = f"Page {page}" if page else "Page unknown"
+            st.markdown(f"**Source {index}** &nbsp;·&nbsp; {page_label}")
             st.caption(source.get("excerpt", ""))
+            if index < len(sources):
+                st.divider()
+
+
+def render_empty_state() -> None:
+    st.caption("Ask anything about the active paper, or start with one of these:")
+    for column, question in zip(st.columns(len(EXAMPLE_QUESTIONS)), EXAMPLE_QUESTIONS):
+        if column.button(question, use_container_width=True):
+            st.session_state.pending_query = question
+            st.rerun()
 
 
 def main() -> None:
@@ -43,12 +59,21 @@ def main() -> None:
         st.session_state.session_id = uuid.uuid4().hex
 
     client = get_client()
+    active = st.session_state.get("document")
 
     st.title("RAG Research Assistant")
+    st.caption("Answers grounded in your PDF, with the page they came from.")
 
     with st.sidebar:
         st.header("Document")
-        uploaded = st.file_uploader("Upload research paper", type=["pdf"])
+        if active:
+            st.markdown(f"**{active['filename']}**")
+            st.caption(f"{active['chunks']} chunks indexed")
+        else:
+            st.markdown("**paper.pdf**")
+            st.caption("Default paper")
+
+        uploaded = st.file_uploader("Replace with your own PDF", type=["pdf"])
         if uploaded is not None and st.button("Index this paper", use_container_width=True):
             with st.spinner("Indexing the document..."):
                 try:
@@ -60,27 +85,30 @@ def main() -> None:
                     _start_new_chat()
                     st.rerun()
 
-        active = st.session_state.get("document")
-        if active:
-            st.success(f"Active paper: {active['filename']}")
-            st.caption(f"{active['chunks']} chunks indexed. Questions now refer to this paper.")
-        else:
-            st.caption("Using the default paper. Upload a PDF to replace it.")
-
         st.divider()
-        st.header("Retrieval")
-        top_k = st.slider("Sources", min_value=1, max_value=8, value=TOP_K)
-
+        st.header("Chat")
         if st.button("New chat", use_container_width=True):
             _start_new_chat()
             st.rerun()
+        top_k = st.slider(
+            "Sources per answer",
+            min_value=1,
+            max_value=8,
+            value=TOP_K,
+            help="How many passages are retrieved and shown as citations.",
+        )
 
         st.divider()
-        st.caption(f"API: {client.base_url}")
         if client.health():
-            st.caption("Backend status: online")
+            st.caption(f"Backend online · {client.base_url}")
         else:
             st.warning("Backend is not reachable. Start the API and reload this page.")
+
+    # chat_input is pinned to the bottom of the page, so reading it first only
+    # affects which elements we render, not the layout.
+    query = st.chat_input("Ask a question about the paper") or st.session_state.pop(
+        "pending_query", None
+    )
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
@@ -88,7 +116,9 @@ def main() -> None:
             if message["role"] == "assistant":
                 render_sources(message.get("sources"))
 
-    query = st.chat_input("Ask a question about the document")
+    if not st.session_state.messages and not query:
+        render_empty_state()
+
     if not query:
         return
 
@@ -97,7 +127,7 @@ def main() -> None:
         st.markdown(query)
 
     with st.chat_message("assistant"):
-        with st.spinner("Searching and generating answer..."):
+        with st.spinner("Searching the paper..."):
             try:
                 result = client.ask(
                     query,
