@@ -20,7 +20,7 @@ try:
         TOP_K,
         UPLOAD_DIR,
     )
-    from .llm import get_llm
+    from .llm import get_chat_model
     from .rag_core import ask_question as run_rag_query, format_history, sources_from_docs
     from .session_store import SessionStore
     from .vector_store import get_vectorstore
@@ -36,7 +36,7 @@ except ImportError:
         TOP_K,
         UPLOAD_DIR,
     )
-    from llm import get_llm
+    from llm import get_chat_model
     from rag_core import ask_question as run_rag_query, format_history, sources_from_docs
     from session_store import SessionStore
     from vector_store import get_vectorstore
@@ -56,7 +56,7 @@ def load_resources() -> dict:
             chunk_size=CHUNK_SIZE,
             chunk_overlap=CHUNK_OVERLAP,
         )
-        _resources["llm"] = get_llm()
+        _resources["llm"] = get_chat_model()
     return _resources
 
 
@@ -139,7 +139,7 @@ async def upload_document(file: UploadFile = File(...)):
             chunk_overlap=CHUNK_OVERLAP,
             rebuild=True,
         )
-        llm = _resources.get("llm") or get_llm()
+        llm = _resources.get("llm") or get_chat_model()
     except PdfReadError:
         logger.exception("Uploaded PDF could not be parsed")
         raise HTTPException(status_code=400, detail="The PDF could not be read.")

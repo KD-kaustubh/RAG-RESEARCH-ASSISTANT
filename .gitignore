@@ -8,3 +8,4 @@ __pycache__/
 faiss_index/
 uploads/
 *.log
+github profile.md

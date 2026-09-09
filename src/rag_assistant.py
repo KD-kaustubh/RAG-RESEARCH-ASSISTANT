@@ -11,7 +11,7 @@ try:
         TOP_K,
         FAISS_INDEX_PATH,
     )
-    from .llm import get_llm
+    from .llm import get_chat_model
     from .rag_core import ask_question, format_history, sources_from_docs
     from .vector_store import get_vectorstore
 except ImportError:
@@ -23,7 +23,7 @@ except ImportError:
         TOP_K,
         FAISS_INDEX_PATH,
     )
-    from llm import get_llm
+    from llm import get_chat_model
     from rag_core import ask_question, format_history, sources_from_docs
     from vector_store import get_vectorstore
 
@@ -84,7 +84,7 @@ def main() -> None:
         rebuild=args.rebuild_index,
     )
 
-    llm = get_llm()
+    llm = get_chat_model()
 
     if args.interactive:
         run_interactive(vectorstore, llm, k=args.k)

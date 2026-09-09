@@ -40,7 +40,7 @@ def client(tmp_path, monkeypatch):
         )
 
     monkeypatch.setattr(main, "get_vectorstore", fake_get_vectorstore)
-    monkeypatch.setattr(main, "get_llm", lambda: FakeLLM(answer="From the uploaded paper."))
+    monkeypatch.setattr(main, "get_chat_model", lambda: FakeLLM(answer="From the uploaded paper."))
 
     main._resources.clear()
     main._resources["vectorstore"] = FakeVectorStore()

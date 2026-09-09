@@ -16,11 +16,12 @@ you start it, and any PDF you upload replaces it as the active document.
 - Cross-page chunking, so a sentence split by a page break stays whole
 - Gemini embeddings and FAISS vector search
 - Grounded Gemini answers with page-level source citations
+- Optional Groq fallback so answers keep working when Gemini hits its daily cap
 - Session-based conversational memory, so follow-up questions resolve "it" and "its"
 - FastAPI backend and a Streamlit frontend that talks to it over HTTP
 - CLI for single questions and interactive chat
 - Docker Compose setup running the API and UI as separate services
-- 118 automated tests that need no API key or network access
+- 129 automated tests that need no API key or network access
 - Render deployment blueprint
 
 ## Architecture
@@ -48,11 +49,26 @@ PDF
   -> grounded answer + page citations
 ```
 
+## Answer Fallback
+
+Gemini's free tier allows only a small number of requests per day, which is enough
+to stop a live demo mid-conversation. Setting `GROQ_API_KEY` enables a backup: if
+the Gemini call fails for any reason, the same prompt and the same retrieved
+context are sent to Groq instead, and the answer comes back in the usual shape
+with its citations. Which provider answered is recorded in the server log.
+
+Retrieval is unaffected. **Embeddings always use Gemini**, because the FAISS index
+is built from Gemini vectors and mixing providers would invalidate it. The backup
+covers answer generation only, so an exhausted Gemini *embedding* quota still
+blocks indexing a newly uploaded PDF.
+
+Leave `GROQ_API_KEY` unset and the assistant runs on Gemini alone, exactly as before.
+
 ## Tech Stack
 
 Python 3.12, FastAPI, Streamlit, LangChain, FAISS (`faiss-cpu`), Google Gemini
-(`gemini-2.5-flash` for chat, `gemini-embedding-001` for embeddings), pypdf,
-Pydantic, pytest, Docker Compose, Render.
+(`gemini-2.5-flash` for chat, `gemini-embedding-001` for embeddings), Groq as an
+optional answer fallback, pypdf, Pydantic, pytest, Docker Compose, Render.
 
 ## Project Structure
 
@@ -143,11 +159,9 @@ API_BASE_URL=http://localhost:8000
 The sidebar shows whether the backend is reachable. Each browser session gets its
 own conversation, and **New chat** starts a fresh one.
 
-The UI answers questions about the document configured by `PDF_PATH` on the
-server. PDF upload was removed from the UI in this step: uploading previously
-built a vector store inside Streamlit, which no longer fits the client/server
-split. Restoring it needs a document endpoint on the API (upload a PDF, get a
-document id back, then pass that id to `/ask`), which is not implemented yet.
+The sidebar shows the active paper. Upload a PDF there to replace it: the file is
+sent to the API, which re-indexes it and makes it the document every later
+question is answered from.
 
 ## Run CLI
 
@@ -259,7 +273,7 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
-118 tests cover prompt building, source and page metadata, history formatting,
+129 tests cover prompt building, source and page metadata, history formatting,
 PDF cleanup, cross-page chunking, FAISS persistence, upload validation and
 indexing, the API (`/health`, `/ask`, `/upload`, validation and failure paths),
 the UI's use of the API client, and a fixed retrieval evaluation set for the
@@ -356,6 +370,8 @@ All configuration is read from `.env` or environment variables.
 | `GOOGLE_API_KEY` | required | Gemini API key |
 | `GEMINI_EMBED_MODEL` | `gemini-embedding-001` | Embedding model |
 | `GEMINI_CHAT_MODEL` | `gemini-2.5-flash` | Chat model |
+| `GROQ_API_KEY` | unset | Enables the Groq backup for answers when set |
+| `GROQ_CHAT_MODEL` | `openai/gpt-oss-120b` | Backup chat model |
 | `PDF_PATH` | `paper.pdf` | Default PDF used until something is uploaded |
 | `QUERY` | `What is the main idea of the paper?` | Default CLI question |
 | `CHUNK_SIZE` | `500` | PDF chunk size |
@@ -410,8 +426,8 @@ python src\rag_assistant.py --rebuild-index
 - Chat history lives in the API process, so it is lost on restart and is not shared
   across multiple workers.
 - Answer throughput depends on the Gemini plan in use. On the free tier the daily
-  request cap is easy to reach, which surfaces as a clean "Failed to generate an
-  answer" rather than a crash.
+  request cap is easy to reach; configure `GROQ_API_KEY` so answers fall back to
+  Groq instead of failing. Embeddings have no fallback and stay on Gemini.
 - Free Render instances sleep when idle and have no persistent disk, so the first
   request after a pause is slow and the index is rebuilt after a restart.
 - Retrieval is plain vector similarity. Most questions about the bundled paper are

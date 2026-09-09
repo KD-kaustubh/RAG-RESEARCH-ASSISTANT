@@ -8,6 +8,10 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GEMINI_EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "gemini-embedding-001")
 GEMINI_CHAT_MODEL = os.getenv("GEMINI_CHAT_MODEL", "gemini-2.5-flash")
 
+# Optional backup for answer generation when Gemini is rate limited or unavailable.
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_CHAT_MODEL = os.getenv("GROQ_CHAT_MODEL", "openai/gpt-oss-120b")
+
 PDF_PATH = os.getenv("PDF_PATH", "paper.pdf")
 QUERY_DEFAULT = os.getenv("QUERY", "What is the main idea of the paper?")
 
