@@ -26,6 +26,7 @@ class StubClient:
             "answer": f"Answer to: {query}",
             "sources": [{"page": 3, "excerpt": "retrieved text"}],
             "session_id": session_id,
+            "model": "gemini-2.5-flash",
         }
 
 
@@ -54,6 +55,12 @@ def test_answer_and_sources_come_from_the_api_response(app):
     rendered = [element.value for element in app.markdown]
     assert any("Answer to: What is the Transformer?" in text for text in rendered)
     assert any("Source 1" in text and "Page 3" in text for text in rendered)
+
+
+def test_the_answering_model_is_shown(app):
+    app.chat_input[0].set_value("What is the Transformer?").run()
+
+    assert any("Answered by gemini-2.5-flash" in c.value for c in app.caption)
 
 
 def test_same_session_id_is_reused_for_follow_ups(app):

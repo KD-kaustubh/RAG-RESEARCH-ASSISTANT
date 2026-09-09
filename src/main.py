@@ -20,7 +20,7 @@ try:
         TOP_K,
         UPLOAD_DIR,
     )
-    from .llm import get_chat_model
+    from .llm import describe_model, get_chat_model
     from .rag_core import ask_question as run_rag_query, format_history, sources_from_docs
     from .session_store import SessionStore
     from .vector_store import get_vectorstore
@@ -36,7 +36,7 @@ except ImportError:
         TOP_K,
         UPLOAD_DIR,
     )
-    from llm import get_chat_model
+    from llm import describe_model, get_chat_model
     from rag_core import ask_question as run_rag_query, format_history, sources_from_docs
     from session_store import SessionStore
     from vector_store import get_vectorstore
@@ -97,6 +97,7 @@ class AskResponse(BaseModel):
     answer: str
     sources: List[Source]
     session_id: Optional[str] = None
+    model: Optional[str] = None
 
 
 class UploadResponse(BaseModel):
@@ -202,4 +203,5 @@ def ask_question(request: QueryRequest):
         "answer": answer,
         "sources": sources_from_docs(docs),
         "session_id": request.session_id,
+        "model": describe_model(resources["llm"]),
     }

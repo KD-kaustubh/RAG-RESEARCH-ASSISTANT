@@ -42,6 +42,15 @@ def get_groq_llm(model_name: Optional[str] = None, temperature: float = 0.2):
     return ChatGroq(model=model_name or GROQ_CHAT_MODEL, temperature=temperature)
 
 
+def model_name(llm) -> str:
+    """Best-effort identifier of the model behind a LangChain chat object."""
+    for attribute in ("model", "model_name"):
+        value = getattr(llm, attribute, None)
+        if isinstance(value, str) and value:
+            return value.replace("models/", "")
+    return type(llm).__name__
+
+
 class FallbackLLM:
     """Answers with the primary model, and switches to the backup when it fails.
 
@@ -52,7 +61,9 @@ class FallbackLLM:
     def __init__(self, primary, backup) -> None:
         self.primary = primary
         self.backup = backup
+        # Best effort: with concurrent requests this reflects the most recent call.
         self.last_provider: Optional[str] = None
+        self.last_model: Optional[str] = None
 
     def invoke(self, prompt):
         try:
@@ -61,10 +72,19 @@ class FallbackLLM:
             logger.warning("Primary model failed (%s); using the backup model", type(exc).__name__)
             response = self.backup.invoke(prompt)
             self.last_provider = "backup"
+            self.last_model = model_name(self.backup)
             return response
 
         self.last_provider = "primary"
+        self.last_model = model_name(self.primary)
         return response
+
+
+def describe_model(llm) -> str:
+    """Which model produced the most recent answer."""
+    if isinstance(llm, FallbackLLM):
+        return llm.last_model or model_name(llm.primary)
+    return model_name(llm)
 
 
 def get_chat_model(temperature: float = 0.2):

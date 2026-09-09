@@ -137,3 +137,27 @@ def test_session_response_echoes_session_id(client):
     response = client.post("/ask", json={"query": "hello", "session_id": "abc"})
 
     assert response.json()["session_id"] == "abc"
+
+
+def test_response_reports_the_model_that_answered(client):
+    body = client.post("/ask", json={"query": "What is this?"}).json()
+
+    assert body["model"] == "FakeLLM"
+
+
+def test_response_reports_the_backup_model_after_a_fallback(client, resources):
+    from llm import FallbackLLM
+
+    from conftest import FakeLLM
+
+    store, _ = resources
+    primary = FakeLLM(error=RuntimeError("quota exceeded"))
+    primary.model = "gemini-2.5-flash"
+    backup = FakeLLM(answer="Backup answer.")
+    backup.model = "openai/gpt-oss-120b"
+    main._resources["llm"] = FallbackLLM(primary, backup)
+
+    body = client.post("/ask", json={"query": "What is this?"}).json()
+
+    assert body["answer"] == "Backup answer."
+    assert body["model"] == "openai/gpt-oss-120b"

@@ -21,7 +21,7 @@ you start it, and any PDF you upload replaces it as the active document.
 - FastAPI backend and a Streamlit frontend that talks to it over HTTP
 - CLI for single questions and interactive chat
 - Docker Compose setup running the API and UI as separate services
-- 129 automated tests that need no API key or network access
+- 135 automated tests that need no API key or network access
 - Render deployment blueprint
 
 ## Architecture
@@ -55,7 +55,8 @@ Gemini's free tier allows only a small number of requests per day, which is enou
 to stop a live demo mid-conversation. Setting `GROQ_API_KEY` enables a backup: if
 the Gemini call fails for any reason, the same prompt and the same retrieved
 context are sent to Groq instead, and the answer comes back in the usual shape
-with its citations. Which provider answered is recorded in the server log.
+with its citations. Each `/ask` response names the model that answered, and the
+UI shows it under the answer, so a switch to the backup is never silent.
 
 Retrieval is unaffected. **Embeddings always use Gemini**, because the FAISS index
 is built from Gemini vectors and mixing providers would invalidate it. The backup
@@ -241,7 +242,7 @@ Example response shape:
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/health` | Liveness check. Returns `{"status": "ok"}` and never calls Gemini, so provider quota cannot mark the service unhealthy. |
-| `POST` | `/ask` | Ask a question. Body: `query` (required), `k` (1-20), `session_id` (optional). Returns the answer, page-cited sources, and the session id. |
+| `POST` | `/ask` | Ask a question. Body: `query` (required), `k` (1-20), `session_id` (optional). Returns the answer, page-cited sources, the session id, and the `model` that produced the answer. |
 | `POST` | `/upload` | Replace the active document with a PDF (multipart `file`). Rebuilds the index and returns `{"status", "filename", "chunks"}`. |
 
 Uploading replaces the active document and clears existing conversations, so a
@@ -273,7 +274,7 @@ pip install -r requirements-dev.txt
 pytest -q
 ```
 
-129 tests cover prompt building, source and page metadata, history formatting,
+135 tests cover prompt building, source and page metadata, history formatting,
 PDF cleanup, cross-page chunking, FAISS persistence, upload validation and
 indexing, the API (`/health`, `/ask`, `/upload`, validation and failure paths),
 the UI's use of the API client, and a fixed retrieval evaluation set for the

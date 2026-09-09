@@ -44,10 +44,17 @@ def render_sources(sources) -> None:
                 st.divider()
 
 
+def render_answer(answer: str, sources, model=None) -> None:
+    st.markdown(answer)
+    render_sources(sources)
+    if model:
+        st.caption(f"Answered by {model}")
+
+
 def render_empty_state() -> None:
-    st.caption("Ask anything about the active paper, or start with one of these:")
+    st.caption("Ask anything about the active paper, or try one of these:")
     for column, question in zip(st.columns(len(EXAMPLE_QUESTIONS)), EXAMPLE_QUESTIONS):
-        if column.button(question, use_container_width=True):
+        if column.button(question, width="content"):
             st.session_state.pending_query = question
             st.rerun()
 
@@ -74,7 +81,7 @@ def main() -> None:
             st.caption("Default paper")
 
         uploaded = st.file_uploader("Replace with your own PDF", type=["pdf"])
-        if uploaded is not None and st.button("Index this paper", use_container_width=True):
+        if uploaded is not None and st.button("Index this paper", width="stretch"):
             with st.spinner("Indexing the document..."):
                 try:
                     result = client.upload(uploaded.name, uploaded.getvalue())
@@ -87,7 +94,7 @@ def main() -> None:
 
         st.divider()
         st.header("Chat")
-        if st.button("New chat", use_container_width=True):
+        if st.button("New chat", width="stretch"):
             _start_new_chat()
             st.rerun()
         top_k = st.slider(
@@ -112,9 +119,10 @@ def main() -> None:
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
             if message["role"] == "assistant":
-                render_sources(message.get("sources"))
+                render_answer(message["content"], message.get("sources"), message.get("model"))
+            else:
+                st.markdown(message["content"])
 
     if not st.session_state.messages and not query:
         render_empty_state()
@@ -138,14 +146,14 @@ def main() -> None:
                 st.error(str(exc))
                 return
 
-        st.markdown(result["answer"])
-        render_sources(result["sources"])
+        render_answer(result["answer"], result["sources"], result.get("model"))
 
     st.session_state.messages.append(
         {
             "role": "assistant",
             "content": result["answer"],
             "sources": result["sources"],
+            "model": result.get("model"),
         }
     )
 

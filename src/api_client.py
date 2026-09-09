@@ -139,4 +139,5 @@ class RagAPIClient:
             "answer": data["answer"],
             "sources": sources,
             "session_id": data.get("session_id"),
+            "model": data.get("model"),
         }

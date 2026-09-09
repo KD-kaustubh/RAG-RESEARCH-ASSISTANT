@@ -111,3 +111,30 @@ def test_fallback_answer_still_flows_through_the_rag_pipeline(fake_vectorstore):
 
     assert answer == "Groq answer."
     assert len(docs) == 2
+
+
+def test_model_name_prefers_the_model_attribute():
+    from llm import model_name
+
+    class Named:
+        model = "models/gemini-2.5-flash"
+
+    assert model_name(Named()) == "gemini-2.5-flash"
+
+
+def test_model_name_falls_back_to_the_class_name():
+    from llm import model_name
+
+    assert model_name(StubModel()) == "StubModel"
+
+
+def test_describe_model_reports_the_backup_after_a_fallback():
+    from llm import describe_model
+
+    primary, backup = StubModel(error=RuntimeError("quota")), StubModel("ok")
+    primary.model, backup.model = "gemini-2.5-flash", "openai/gpt-oss-120b"
+    fallback = FallbackLLM(primary, backup)
+
+    assert describe_model(fallback) == "gemini-2.5-flash"  # before any call
+    fallback.invoke("question")
+    assert describe_model(fallback) == "openai/gpt-oss-120b"
